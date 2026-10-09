@@ -10,4 +10,4 @@ COPY --from=build /dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl \
     && useradd --create-home --uid 10001 mcp
 USER mcp
-ENTRYPOINT ["jira-dc-analyst-mcp"]
+ENTRYPOINT ["atlassian-admin-mcp"]

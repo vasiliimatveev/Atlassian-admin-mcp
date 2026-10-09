@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from jira_dc_analyst.tools.issue_inspect import is_image_attachment, looks_like_text
-from jira_dc_analyst.util import InvalidArgument, error_json, seg, set_json_indent, to_json
+from atlassian_admin_mcp.tools.issue_inspect import is_image_attachment, looks_like_text
+from atlassian_admin_mcp.util import InvalidArgument, error_json, seg, set_json_indent, to_json
 
 
 @pytest.mark.parametrize(

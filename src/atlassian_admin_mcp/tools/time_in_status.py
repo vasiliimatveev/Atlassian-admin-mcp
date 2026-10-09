@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
-from ..client import AnalystError
+from ..client import JiraError
 from ..util import error_json, get_client, to_json
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ def register(tool: Callable[..., Any]) -> None:
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get("/rest/tis/report/1.0/api/issue", **params))
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_issue_time_in_status failed: {exc}", status=exc.status)
 
     @tool(
@@ -152,7 +152,7 @@ def register(tool: Callable[..., Any]) -> None:
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get("/rest/tis/report/1.0/api/list2", **params))
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"search_time_in_status failed: {exc}", status=exc.status)
 
     @tool(
@@ -177,5 +177,5 @@ def register(tool: Callable[..., Any]) -> None:
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get("/rest/tis/report/1.0/data/calendars"))
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"list_tis_calendars failed: {exc}", status=exc.status)

@@ -10,7 +10,7 @@ from fastmcp import Context
 from mcp.types import ImageContent, TextContent
 from pydantic import Field
 
-from ..client import AnalystError
+from ..client import JiraError
 from ..util import error_json, get_client, seg, to_json
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,29 @@ def looks_like_text(mime: str, filename: str) -> bool:
     return filename.lower().endswith(_TEXT_EXTENSIONS)
 
 
+async def _check_owner(client: Any, issue_key: str, attachment_id: str) -> str | None:
+    """Confirm the attachment belongs to ``issue_key``.
+
+    Reading the issue's attachment list is also what releases the
+    attachment when the issue guard is on.
+    """
+    if not issue_key:
+        return None
+    data = await client.rest_get(f"/rest/api/2/issue/{seg(issue_key)}", fields="attachment")
+    attachments = (data.get("fields") or {}).get("attachment") or []
+    if str(attachment_id).strip() not in {str(a.get("id")) for a in attachments}:
+        return error_json(f"attachment {attachment_id} does not belong to {issue_key}", status=404)
+    return None
+
+
+_ISSUE_KEY_FIELD = Field(
+    description=(
+        "Issue the attachment belongs to, e.g. 'HR-123'. Verifies ownership; "
+        "required when the server runs with the issue guard."
+    )
+)
+
+
 def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of thin wrappers
     # =====================================================================
     # Issue deep-inspection — votes, remote links, attachment content
@@ -91,7 +114,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get(f"/rest/api/2/issue/{seg(issue_key)}/votes"))
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_issue_votes failed: {exc}", status=exc.status)
 
     @tool(
@@ -115,7 +138,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
             return to_json(
                 await client.rest_get(f"/rest/api/2/issue/{seg(issue_key)}/remotelink", **params)
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_issue_remotelinks failed: {exc}", status=exc.status)
 
     @tool(
@@ -125,8 +148,9 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
     async def get_attachment_content(
         ctx: Context,
         attachment_id: Annotated[
-            str, Field(description="Numeric attachment id (from list_attachments).")
+            str, Field(description="Numeric attachment id (from the issue's fields.attachment).")
         ],
+        issue_key: Annotated[str, _ISSUE_KEY_FIELD] = "",
     ) -> list[TextContent | ImageContent]:
         """Download an attachment and return it inline for analysis.
 
@@ -142,9 +166,12 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
           the file out-of-band.
         """
         client = get_client(ctx)
+        mismatch = await _check_owner(client, issue_key, attachment_id)
+        if mismatch:
+            return [TextContent(type="text", text=mismatch)]
         try:
             meta = await client.rest_get(f"/rest/api/2/attachment/{seg(attachment_id)}")
-        except AnalystError as exc:
+        except JiraError as exc:
             return [
                 TextContent(
                     type="text",
@@ -205,7 +232,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                 content_url,
                 max_bytes=_MAX_IMAGE_BYTES if is_image else _MAX_TEXT_DOWNLOAD_BYTES,
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return [
                 TextContent(
                     type="text",
@@ -316,6 +343,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
     async def get_attachment_thumbnail(
         ctx: Context,
         attachment_id: Annotated[str, Field(description="Numeric attachment id.")],
+        issue_key: Annotated[str, _ISSUE_KEY_FIELD] = "",
     ) -> list[TextContent | ImageContent]:
         """Fetch the server-generated thumbnail for an image attachment.
 
@@ -325,9 +353,12 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         thumbnail (non-image, or generation failed).
         """
         client = get_client(ctx)
+        mismatch = await _check_owner(client, issue_key, attachment_id)
+        if mismatch:
+            return [TextContent(type="text", text=mismatch)]
         try:
             meta = await client.rest_get(f"/rest/api/2/attachment/{seg(attachment_id)}")
-        except AnalystError as exc:
+        except JiraError as exc:
             return [
                 TextContent(
                     type="text",
@@ -357,7 +388,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
             ]
         try:
             data = await client.fetch_bytes(thumb_url, max_bytes=_MAX_IMAGE_BYTES)
-        except AnalystError as exc:
+        except JiraError as exc:
             return [
                 TextContent(
                     type="text",

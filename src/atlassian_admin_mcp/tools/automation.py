@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
-from ..client import AnalystError
+from ..client import JiraError
 from ..util import error_json, get_client, seg, to_json
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ def register(tool: Callable[..., Any]) -> None:
             )
         try:
             return to_json(await client.rest_get("/rest/cb-automation/latest/rule"))
-        except AnalystError as exc:
+        except JiraError as exc:
             logger.info("A4J global rules endpoint failed (%s)", exc)
             return error_json("project parameter required for A4J rules")
 

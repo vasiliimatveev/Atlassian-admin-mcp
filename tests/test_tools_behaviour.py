@@ -13,10 +13,13 @@ from .test_tools_smoke import PNG
 
 async def test_path_arguments_cannot_escape_their_endpoint(jira, mcp_client):
     async with mcp_client() as c:
-        await c.call_tool(
-            "jira_get_issue_votes", {"issue_key": "../../plugins/1.0/"}, raise_on_error=False
-        )
-    assert jira.paths() == ["/rest/api/2/issue/..%2F..%2Fplugins%2F1.0%2F/votes"]
+        for key in ("../../plugins/1.0/", "HR-1;x", "7/../../api/2/search", "HR-1\\x"):
+            result = await c.call_tool(
+                "jira_get_issue_votes", {"issue_key": key}, raise_on_error=False
+            )
+            assert result.is_error
+            assert json.loads(result.content[0].text)["kind"] == "invalid_argument"
+    assert jira.requests == []
 
 
 async def test_upm_plugin_key_is_encoded_and_uses_vendor_media_type(jira, mcp_client):

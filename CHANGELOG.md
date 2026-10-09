@@ -4,7 +4,12 @@
 
 First standalone release.
 
-- 118 read-only tools in 14 toolsets plus `jira_analyst_status` self-check.
+- Issue guard (`JIRA_GUARD_JQL`, `JIRA_GUARD_HEADER`). It confines every call
+  to the issues matched by a JQL, with the allow-list, case-insensitive keys,
+  path-trick, attachment, header and redirect protections described in the
+  README.
+
+- 118 read-only tools in 14 toolsets plus `jira_admin_status` self-check.
 - Async HTTP client with connection pooling, a TTL cache, de-duplication of
   identical in-flight requests, a concurrency cap and retries.
 - Structured errors for agents: `kind`, `status`, `hint`, `retryable`.

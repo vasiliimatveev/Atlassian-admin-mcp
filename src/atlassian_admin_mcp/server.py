@@ -16,8 +16,10 @@ from mcp.types import TextContent
 from pydantic import Field
 
 from . import __version__
-from .client import AnalystClient, AnalystError
+from .client import JiraClient, JiraError
 from .config import Settings
+from .guard import CURRENT, GUARDED_TOOLS, resolve_call_guard
+from .jql import GuardDenied
 from .tools import MODULES
 from .toolsets import TOOLSETS, resolve_toolsets
 from .util import InvalidArgument, get_client, set_json_indent, to_json
@@ -29,7 +31,7 @@ plugins (ScriptRunner, JMWE, Structure, Assets, Automation, SLA, Time in
 Status, Email This Issue), Git/DVCS integration, audit and system logs.
 No tool changes anything in Jira.
 
-Start with jira_analyst_status if calls fail: it checks connectivity, the
+Start with jira_admin_status if calls fail: it checks connectivity, the
 Groovy endpoint and which toolsets are enabled. List tools return ids and
 names; use the matching get_* tool for full detail."""
 
@@ -58,15 +60,15 @@ def classify(status: int | None, via_groovy: bool, settings: Settings) -> dict[s
         return {
             "kind": "groovy_endpoint_missing",
             "retryable": False,
-            "hint": f"Install groovy/admin_analyst.groovy as a ScriptRunner REST endpoint "
-            f"at {settings.sr_path}, or set JIRA_ANALYST_SR_PATH. Tools that do not "
+            "hint": f"Install groovy/atlassian_admin.groovy as a ScriptRunner REST endpoint "
+            f"at {settings.sr_path}, or set JIRA_ADMIN_SR_PATH. Tools that do not "
             "need the endpoint still work.",
         }
     if via_groovy and status == 403:
         return {
             "kind": "groovy_forbidden",
             "retryable": False,
-            "hint": "The user is not in ALLOWED_GROUPS of admin_analyst.groovy "
+            "hint": "The user is not in ALLOWED_GROUPS of atlassian_admin.groovy "
             "(default: jira-administrators).",
         }
     if status == 403:
@@ -103,7 +105,7 @@ def classify(status: int | None, via_groovy: bool, settings: Settings) -> dict[s
     return {"kind": "bad_request", "retryable": False, "hint": "Check the arguments."}
 
 
-def describe_error(exc: AnalystError, settings: Settings) -> dict[str, Any]:
+def describe_error(exc: JiraError, settings: Settings) -> dict[str, Any]:
     """Structured, actionable description of a failed Jira call."""
     via_groovy = bool(exc.url and exc.url.split("?")[0].endswith(settings.sr_path))
     payload: dict[str, Any] = {"error": str(exc), "status": exc.status}
@@ -148,16 +150,32 @@ def _truncate(text: str, limit: int) -> str:
             "truncated": True,
             "totalChars": len(text),
             "returnedChars": limit,
-            "hint": "Response exceeded JIRA_ANALYST_MAX_RESPONSE_CHARS. Narrow it with "
+            "hint": "Response exceeded JIRA_ADMIN_MAX_RESPONSE_CHARS. Narrow it with "
             "search/project filters or fetch single objects with get_* tools.",
             "partial": text[:limit],
         }
     )
 
 
-def _guard(fn: Callable[..., Any], settings: Settings) -> Callable[..., Any]:
-    """Uniform result handling for every tool.
+def _denied(exc: GuardDenied) -> ToolError:
+    return ToolError(
+        to_json(
+            {
+                "error": str(exc),
+                "kind": "guard_denied",
+                "retryable": False,
+                "hint": "The request is outside the issues this caller may see. "
+                "Do not retry with other ids to probe the restriction.",
+            }
+        )
+    )
 
+
+def _wrap_tool(fn: Callable[..., Any], settings: Settings) -> Callable[..., Any]:
+    """Uniform call handling for every tool.
+
+    * with the guard on, the call's guard JQL is resolved first (from env
+      and/or the HTTP header) and every Jira request in the call is checked;
     * failures always surface as ``isError`` results with a JSON body
       ``{error, kind, status, hint, retryable}`` — including tools that
       return an ``{"error": ...}`` payload instead of raising;
@@ -166,14 +184,22 @@ def _guard(fn: Callable[..., Any], settings: Settings) -> Callable[..., Any]:
 
     @functools.wraps(fn)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        token = None
         try:
+            if settings.guard_active:
+                token = CURRENT.set(resolve_call_guard(settings))
             result = await fn(*args, **kwargs)
-        except AnalystError as exc:
+        except GuardDenied as exc:
+            raise _denied(exc) from exc
+        except JiraError as exc:
             raise ToolError(to_json(describe_error(exc, settings))) from exc
         except InvalidArgument as exc:
             raise ToolError(
                 to_json({"error": str(exc), "kind": "invalid_argument", "retryable": False})
             ) from exc
+        finally:
+            if token is not None:
+                CURRENT.reset(token)
         if isinstance(result, str):
             error = _as_error(result, settings)
             if error is not None:
@@ -199,14 +225,14 @@ def create_server(
 
     @contextlib.asynccontextmanager
     async def lifespan(_server: FastMCP) -> AsyncIterator[dict[str, Any]]:
-        client = AnalystClient(settings, transport=transport)
+        client = JiraClient(settings, transport=transport)
         try:
             yield {"client": client}
         finally:
             await client.aclose()
 
     mcp = FastMCP(
-        "jira-dc-analyst",
+        "atlassian-admin",
         instructions=INSTRUCTIONS,
         version=__version__,
         lifespan=lifespan,
@@ -218,16 +244,19 @@ def create_server(
             raise ValueError(f"unknown toolset tag {toolset!r}")
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-            if toolset in enabled:
+            name = f"jira_{fn.__name__}"
+            # With the guard on, tools that cannot be confined by JQL are hidden.
+            hidden = settings.guard_active and name not in GUARDED_TOOLS
+            if toolset in enabled and not hidden:
                 mcp.tool(
-                    name=f"jira_{fn.__name__}",
+                    name=name,
                     tags=set(tags),
                     annotations={**annotations, **READ_ONLY_ANNOTATIONS},
                     # Tools return JSON text; without this FastMCP would also
                     # send it as structuredContent, doubling every response.
                     output_schema=None,
                     **kwargs,
-                )(_guard(fn, settings))
+                )(_wrap_tool(fn, settings))
             return fn
 
         return decorator
@@ -240,12 +269,12 @@ def create_server(
 
 def _register_status_tool(mcp: FastMCP, settings: Settings, enabled: set[str]) -> None:
     @mcp.tool(
-        name="jira_analyst_status",
+        name="jira_admin_status",
         tags={"read", "toolset:core"},
-        annotations={"title": "Analyst Status / Self-check", **READ_ONLY_ANNOTATIONS},
+        annotations={"title": "Admin MCP Status / Self-check", **READ_ONLY_ANNOTATIONS},
         output_schema=None,
     )
-    async def analyst_status(
+    async def admin_status(
         ctx: Context,
         clear_cache: Annotated[
             bool, Field(description="Drop cached responses before checking.")
@@ -259,15 +288,20 @@ def _register_status_tool(mcp: FastMCP, settings: Settings, enabled: set[str]) -
         client = get_client(ctx)
         if clear_cache:
             client.clear_cache()
-        server_info, me, ping = await asyncio.gather(
+        server_info, me = await asyncio.gather(
             client.rest_get("/rest/api/2/serverInfo", cache=False),
             client.rest_get("/rest/api/2/myself", cache=False),
-            client.sr_action("ping", cache=False),
             return_exceptions=True,
         )
+        ping: Any = None
+        if not settings.guard_active:
+            try:
+                ping = await client.sr_action("ping", cache=False)
+            except JiraError as exc:
+                ping = exc
 
         def outcome(result: Any) -> Any:
-            if isinstance(result, AnalystError):
+            if isinstance(result, JiraError):
                 return {"ok": False, **describe_error(result, settings)}
             if isinstance(result, BaseException):
                 return {"ok": False, "error": repr(result)}
@@ -286,19 +320,28 @@ def _register_status_tool(mcp: FastMCP, settings: Settings, enabled: set[str]) -
             "displayName": me.get("displayName"),
         }
         groovy = outcome(ping)
-        if groovy is None:
+        if settings.guard_active:
+            groovy = {"ok": None, "skipped": "not used while the guard is on"}
+        elif groovy is None:
             if isinstance(ping, dict) and ping.get("ok"):
                 groovy = {"ok": True, **{k: v for k, v in ping.items() if k != "ok"}}
             else:
                 groovy = {
                     "ok": True,
                     "warning": "Endpoint answered but has no 'ping' action — it is an "
-                    "older admin_analyst.groovy; redeploy the bundled version.",
+                    "older atlassian_admin.groovy; redeploy the bundled version.",
                 }
         report["groovyEndpoint"] = {"path": settings.sr_path, **groovy}
         report["toolsets"] = {
             name: {"enabled": name in enabled, "requires": t.requires}
             for name, t in TOOLSETS.items()
+        }
+        report["guard"] = {
+            "active": settings.guard_active,
+            "sources": [
+                *(["JIRA_GUARD_JQL"] if settings.guard_jql else []),
+                *([f"header:{settings.guard_header}"] if settings.guard_header else []),
+            ],
         }
         report["cache"] = client.cache_stats()
         return to_json(report)

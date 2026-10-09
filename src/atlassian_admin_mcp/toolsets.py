@@ -73,15 +73,12 @@ TOOLSETS: dict[str, Toolset] = {
     )
 }
 
-_LEGACY_PREFIX = "jira_analyst_"
-
 
 def resolve_toolsets(spec: str) -> set[str]:
     """Turn a ``TOOLSETS`` value into a set of toolset names.
 
-    ``""`` / ``default`` → the default set; ``all`` → everything. Names may
-    carry the legacy ``jira_analyst_`` prefix. Unknown names are logged and
-    ignored; if nothing valid remains the result is empty (fail closed).
+    ``""`` / ``default`` → the default set; ``all`` → everything. Unknown
+    names are logged and ignored; if nothing valid remains the result is empty (fail closed).
     """
     names = [n.strip().lower() for n in spec.split(",") if n.strip()]
     if not names:
@@ -89,7 +86,6 @@ def resolve_toolsets(spec: str) -> set[str]:
     enabled: set[str] = set()
     unknown: list[str] = []
     for name in names:
-        name = name.removeprefix(_LEGACY_PREFIX)
         if name == "all":
             enabled.update(TOOLSETS)
         elif name == "default":

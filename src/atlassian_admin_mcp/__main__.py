@@ -1,4 +1,4 @@
-"""Command-line entry point: ``jira-dc-analyst-mcp``."""
+"""Command-line entry point: ``atlassian-admin-mcp``."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from .toolsets import TOOLSETS
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        prog="jira-dc-analyst-mcp",
+        prog="atlassian-admin-mcp",
         description="Read-only MCP server for Jira Data Center administrators.",
     )
     parser.add_argument("--transport", choices=("stdio", "http", "sse"), default="stdio")
@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> None:
     try:
         settings = Settings.from_env(env)
     except ConfigError as exc:
-        print(f"jira-dc-analyst-mcp: {exc}", file=sys.stderr)
+        print(f"atlassian-admin-mcp: {exc}", file=sys.stderr)
         sys.exit(2)
 
     from .server import create_server

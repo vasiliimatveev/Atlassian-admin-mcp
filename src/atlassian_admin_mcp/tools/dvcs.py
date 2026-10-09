@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
-from ..client import AnalystError
+from ..client import JiraError
 from ..util import error_json, get_client, seg, to_json
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                     pagesize=max(1, min(int(page_size), 100)),
                 )
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"list_dvcs_organizations failed: {exc}", status=exc.status)
 
     @tool(
@@ -94,7 +94,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
             return to_json(
                 await client.rest_get(f"/rest/bitbucket/1.0/organization/{seg(organization_id)}")
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_dvcs_organization failed: {exc}", status=exc.status)
 
     @tool(
@@ -119,7 +119,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                     f"/rest/bitbucket/1.0/organization/{seg(organization_id)}/repository"
                 )
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"list_dvcs_repositories failed: {exc}", status=exc.status)
 
     @tool(
@@ -139,7 +139,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
             return to_json(
                 await client.rest_get(f"/rest/bitbucket/1.0/repository/{seg(repository_id)}")
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_dvcs_repository failed: {exc}", status=exc.status)
 
     @tool(
@@ -176,7 +176,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         )
         try:
             return to_json(await client.rest_get(path, cache=False))
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_dvcs_sync_audit failed: {exc}", status=exc.status)
 
     # ---- BigBrassBand Git Integration for Jira (GIJ) ----------------
@@ -207,7 +207,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                     showfiles="true" if show_files else "false",
                 )
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"list_gij_issue_commits failed: {exc}", status=exc.status)
 
     @tool(
@@ -238,7 +238,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
             if issue_key:
                 params["key"] = issue_key
             return to_json(await client.rest_get("/rest/gitplugin/1.0/issues/branches", **params))
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"list_gij_issue_branches failed: {exc}", status=exc.status)
 
     @tool(
@@ -263,7 +263,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
             return to_json(
                 await client.rest_get(f"/rest/gitplugin/1.0/commit/{seg(commit_sha)}/issues")
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_gij_commit_issues failed: {exc}", status=exc.status)
 
     # ---- dev-status (raw panel data) --------------------------------
@@ -298,7 +298,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
             return to_json(
                 await client.rest_get("/rest/dev-status/1.0/issue/summary", issueId=issue_id)
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_issue_dev_summary failed: {exc}", status=exc.status)
 
     @tool(
@@ -353,5 +353,5 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                     dataType=data_type,
                 )
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_issue_dev_detail failed: {exc}", status=exc.status)

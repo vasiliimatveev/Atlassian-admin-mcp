@@ -32,7 +32,7 @@ def test_readme_tool_count_matches_registry():
 
 def test_env_example_lists_every_setting():
     env_example = (ROOT / ".env.example").read_text()
-    config = (ROOT / "src" / "jira_dc_analyst" / "config.py").read_text()
+    config = (ROOT / "src" / "atlassian_admin_mcp" / "config.py").read_text()
     names = set(re.findall(r'"((?:JIRA|TOOLSETS)[A-Z_]*)"', config))
     missing = {n for n in names if n not in env_example}
     assert not missing, f".env.example misses {sorted(missing)}"

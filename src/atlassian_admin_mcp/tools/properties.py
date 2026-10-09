@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
-from ..client import AnalystError
+from ..client import JiraError
 from ..util import error_json, get_client, seg, to_json
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
             return to_json(
                 await client.rest_get(f"/rest/api/2/project/{seg(project_key)}/properties")
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"list_project_properties failed: {exc}", status=exc.status)
 
     @tool(
@@ -73,7 +73,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                     f"/rest/api/2/project/{seg(project_key)}/properties/{seg(property_key)}"
                 )
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_project_property failed: {exc}", status=exc.status)
 
     @tool(
@@ -90,7 +90,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get(f"/rest/api/2/issue/{seg(issue_key)}/properties"))
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"list_issue_properties failed: {exc}", status=exc.status)
 
     @tool(
@@ -110,7 +110,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                     f"/rest/api/2/issue/{seg(issue_key)}/properties/{seg(property_key)}"
                 )
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_issue_property failed: {exc}", status=exc.status)
 
     @tool(
@@ -137,7 +137,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get("/rest/api/2/user/properties", username=username))
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"list_user_properties failed: {exc}", status=exc.status)
 
     @tool(
@@ -160,5 +160,5 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                     username=username,
                 )
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_user_property failed: {exc}", status=exc.status)

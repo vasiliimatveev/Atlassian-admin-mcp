@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
-from ..client import AnalystError
+from ..client import JiraError
 from ..util import error_json, get_client, to_json
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
     # Vendor docs: https://docs.meta-inf.hu/email-this-issue/
     # Public REST only covers the audit log and queue metrics; template /
     # notification-rule / handler CRUD is exposed via OSGi API only and
-    # would require ScriptRunner. For analyst needs ("why did this issue
+    # would require ScriptRunner. For audit needs ("why did this issue
     # get an email", "is the queue backing up") the REST surface is enough.
     # =====================================================================
 
@@ -70,7 +70,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get("/rest/jeti/1.0/email/query", **params))
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"search_jeti_audit_log failed: {exc}", status=exc.status)
 
     @tool(
@@ -104,7 +104,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get("/rest/jeti/1.0/email/stat", **params))
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_jeti_audit_count failed: {exc}", status=exc.status)
 
     @tool(
@@ -130,7 +130,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
             return to_json(
                 await client.rest_get("/rest/jeti/1.0/outgoingMailQueue/statistic", cache=False)
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(
                 f"get_jeti_outgoing_queue_stats failed: {exc}",
                 status=exc.status,
@@ -160,7 +160,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
             return to_json(
                 await client.rest_get("/rest/jeti/1.0/incomingMailQueue/statistic", cache=False)
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(
                 f"get_jeti_incoming_queue_stats failed: {exc}",
                 status=exc.status,
@@ -190,7 +190,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
             return to_json(
                 await client.rest_get("/rest/jeti/1.0/mailGenerationQueue/statistic", cache=False)
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(
                 f"get_jeti_generation_queue_stats failed: {exc}",
                 status=exc.status,

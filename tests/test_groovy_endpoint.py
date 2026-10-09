@@ -1,4 +1,4 @@
-"""Static consistency checks between the Python tools and admin_analyst.groovy.
+"""Static consistency checks between the Python tools and atlassian_admin.groovy.
 
 The Groovy file cannot run outside Jira, but the contract between the two
 sides — action names and endpoint path — can be checked here.
@@ -7,11 +7,11 @@ sides — action names and endpoint path — can be checked here.
 import re
 from pathlib import Path
 
-from jira_dc_analyst.config import DEFAULT_SR_PATH
+from atlassian_admin_mcp.config import DEFAULT_SR_PATH
 
 ROOT = Path(__file__).resolve().parents[1]
-GROOVY = (ROOT / "groovy" / "admin_analyst.groovy").read_text()
-PY_SOURCES = "\n".join(p.read_text() for p in (ROOT / "src" / "jira_dc_analyst").rglob("*.py"))
+GROOVY = (ROOT / "groovy" / "atlassian_admin.groovy").read_text()
+PY_SOURCES = "\n".join(p.read_text() for p in (ROOT / "src" / "atlassian_admin_mcp").rglob("*.py"))
 
 
 def _groovy_actions() -> set[str]:

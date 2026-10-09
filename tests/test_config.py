@@ -1,7 +1,7 @@
 import pytest
 
-from jira_dc_analyst.config import DEFAULT_SR_PATH, ConfigError, Settings
-from jira_dc_analyst.toolsets import TOOLSETS, resolve_toolsets
+from atlassian_admin_mcp.config import DEFAULT_SR_PATH, ConfigError, Settings
+from atlassian_admin_mcp.toolsets import TOOLSETS, resolve_toolsets
 
 BASE_ENV = {"JIRA_URL": "https://jira.example.com/", "JIRA_PERSONAL_TOKEN": "t"}
 
@@ -27,9 +27,9 @@ def test_basic_auth_accepts_api_token_or_password():
         ({}, "JIRA_URL is required"),
         ({"JIRA_URL": "jira.example.com", "JIRA_PERSONAL_TOKEN": "t"}, "absolute http"),
         ({"JIRA_URL": "https://j"}, "JIRA_PERSONAL_TOKEN"),
-        ({**BASE_ENV, "JIRA_ANALYST_CACHE_TTL": "abc"}, "integer"),
-        ({**BASE_ENV, "JIRA_ANALYST_MAX_CONCURRENCY": "0"}, ">= 1"),
-        ({**BASE_ENV, "JIRA_ANALYST_TIMEOUT": "-1"}, "> 0"),
+        ({**BASE_ENV, "JIRA_ADMIN_CACHE_TTL": "abc"}, "integer"),
+        ({**BASE_ENV, "JIRA_ADMIN_MAX_CONCURRENCY": "0"}, ">= 1"),
+        ({**BASE_ENV, "JIRA_ADMIN_TIMEOUT": "-1"}, "> 0"),
     ],
 )
 def test_invalid_env_is_rejected(env, message):
@@ -46,9 +46,7 @@ def test_ssl_verify_accepts_bool_or_ca_bundle(raw, expected):
 
 
 def test_sr_path_gets_leading_slash_and_timeout_falls_back():
-    s = Settings.from_env(
-        {**BASE_ENV, "JIRA_ANALYST_SR_PATH": "rest/custom/x", "JIRA_TIMEOUT": "12"}
-    )
+    s = Settings.from_env({**BASE_ENV, "JIRA_ADMIN_SR_PATH": "rest/custom/x", "JIRA_TIMEOUT": "12"})
     assert s.sr_path == "/rest/custom/x"
     assert s.timeout == 12.0
 
@@ -58,9 +56,9 @@ def test_default_toolsets():
     assert resolve_toolsets("default") == resolve_toolsets("")
 
 
-def test_all_and_legacy_prefix_and_unknown(caplog):
+def test_all_case_insensitive_and_unknown(caplog):
     assert resolve_toolsets("all") == set(TOOLSETS)
-    assert resolve_toolsets("jira_analyst_jmwe, SLA") == {"jmwe", "sla"}
+    assert resolve_toolsets("jmwe, SLA") == {"jmwe", "sla"}
     assert resolve_toolsets("nope,jmwe") == {"jmwe"}
     assert "nope" in caplog.text
 

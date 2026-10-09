@@ -6,7 +6,9 @@ import os
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-DEFAULT_SR_PATH = "/rest/scriptrunner/latest/custom/adminAnalyst"
+from .jql import GuardDenied, validate_guard
+
+DEFAULT_SR_PATH = "/rest/scriptrunner/latest/custom/atlassianAdmin"
 
 
 class ConfigError(ValueError):
@@ -60,6 +62,12 @@ class Settings:
     json_indent: int | None = None
     max_response_chars: int = 100_000
     toolsets: str = ""
+    guard_jql: str | None = None
+    guard_header: str | None = None
+
+    @property
+    def guard_active(self) -> bool:
+        return bool(self.guard_jql or self.guard_header)
 
     @property
     def origin(self) -> str:
@@ -103,12 +111,20 @@ class Settings:
         else:
             ssl_verify = _bool(raw_verify, True)
 
-        sr_path = env.get("JIRA_ANALYST_SR_PATH", "").strip() or DEFAULT_SR_PATH
+        sr_path = env.get("JIRA_ADMIN_SR_PATH", "").strip() or DEFAULT_SR_PATH
         if not sr_path.startswith("/"):
             sr_path = "/" + sr_path
 
-        timeout = _float(env, "JIRA_ANALYST_TIMEOUT", _float(env, "JIRA_TIMEOUT", 60.0))
-        indent = _int(env, "JIRA_ANALYST_JSON_INDENT", 0)
+        timeout = _float(env, "JIRA_ADMIN_TIMEOUT", _float(env, "JIRA_TIMEOUT", 60.0))
+        indent = _int(env, "JIRA_ADMIN_JSON_INDENT", 0)
+
+        guard_jql = env.get("JIRA_GUARD_JQL", "").strip() or None
+        if guard_jql:
+            try:
+                validate_guard(guard_jql)
+            except GuardDenied as exc:
+                raise ConfigError(f"JIRA_GUARD_JQL: {exc}") from exc
+        guard_header = env.get("JIRA_GUARD_HEADER", "").strip().lower() or None
 
         return cls(
             url=url,
@@ -118,10 +134,12 @@ class Settings:
             ssl_verify=ssl_verify,
             sr_path=sr_path,
             timeout=timeout,
-            cache_ttl=_int(env, "JIRA_ANALYST_CACHE_TTL", 120),
-            max_concurrency=_int(env, "JIRA_ANALYST_MAX_CONCURRENCY", 8, minimum=1),
-            retries=_int(env, "JIRA_ANALYST_RETRIES", 2),
+            cache_ttl=_int(env, "JIRA_ADMIN_CACHE_TTL", 120),
+            max_concurrency=_int(env, "JIRA_ADMIN_MAX_CONCURRENCY", 8, minimum=1),
+            retries=_int(env, "JIRA_ADMIN_RETRIES", 2),
             json_indent=indent or None,
-            max_response_chars=_int(env, "JIRA_ANALYST_MAX_RESPONSE_CHARS", 100_000),
+            max_response_chars=_int(env, "JIRA_ADMIN_MAX_RESPONSE_CHARS", 100_000),
             toolsets=env.get("TOOLSETS", "").strip(),
+            guard_jql=guard_jql,
+            guard_header=guard_header,
         )

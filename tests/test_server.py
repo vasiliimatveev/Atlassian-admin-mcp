@@ -3,7 +3,7 @@ import re
 
 import pytest
 
-from jira_dc_analyst.toolsets import TOOLSETS
+from atlassian_admin_mcp.toolsets import TOOLSETS
 
 from .conftest import payload
 
@@ -45,7 +45,7 @@ async def test_only_enabled_toolsets_are_exposed(mcp_client):
     async with mcp_client(toolsets="jmwe,logs") as c:
         names = {t.name for t in await c.list_tools()}
     assert names == {
-        "jira_analyst_status",
+        "jira_admin_status",
         "jira_list_jmwe_event_actions",
         "jira_get_jmwe_event_action",
         "jira_list_jmwe_shared_actions",
@@ -57,7 +57,7 @@ async def test_only_enabled_toolsets_are_exposed(mcp_client):
 
 async def test_unknown_toolsets_leave_only_status_tool(mcp_client):
     async with mcp_client(toolsets="nope") as c:
-        assert [t.name for t in await c.list_tools()] == ["jira_analyst_status"]
+        assert [t.name for t in await c.list_tools()] == ["jira_admin_status"]
 
 
 async def test_tool_metadata_is_agent_friendly(mcp_client):
@@ -102,7 +102,7 @@ async def test_missing_groovy_endpoint_is_explained(jira, mcp_client):
         err = await _error(c, "jira_list_workflows", {})
     assert err["kind"] == "groovy_endpoint_missing"
     assert err["status"] == 404
-    assert "admin_analyst.groovy" in err["hint"]
+    assert "atlassian_admin.groovy" in err["hint"]
     assert err["retryable"] is False
 
 
@@ -180,7 +180,7 @@ async def test_status_reports_everything_ok(jira, mcp_client):
     jira.add("/rest/api/2/myself", {"name": "admin", "displayName": "Admin"})
     jira.sr("ping", {"ok": True, "endpointVersion": "2.0.0"})
     async with mcp_client(toolsets="default") as c:
-        body = payload(await c.call_tool("jira_analyst_status", {}))
+        body = payload(await c.call_tool("jira_admin_status", {}))
     assert body["jira"] == {
         "ok": True,
         "version": "10.3.2",
@@ -199,7 +199,7 @@ async def test_status_explains_partial_failures(jira, mcp_client):
     jira.add("/rest/api/2/serverInfo", {"version": "9.12.0"})
     jira.add("/rest/api/2/myself", {}, status=401)
     async with mcp_client() as c:
-        result = await c.call_tool("jira_analyst_status", {})
+        result = await c.call_tool("jira_admin_status", {})
     assert not result.is_error
     body = payload(result)
     assert body["jira"]["ok"] is True
@@ -212,8 +212,8 @@ async def test_status_flags_outdated_groovy_endpoint(jira, mcp_client):
     jira.add("/rest/api/2/myself", {})
     jira.sr("ping", {"error": "Unknown action: 'ping'"})  # pre-2.0 endpoint answers 200
     async with mcp_client() as c:
-        body = payload(await c.call_tool("jira_analyst_status", {}))
-    assert "older admin_analyst.groovy" in body["groovyEndpoint"]["warning"]
+        body = payload(await c.call_tool("jira_admin_status", {}))
+    assert "older atlassian_admin.groovy" in body["groovyEndpoint"]["warning"]
 
 
 async def test_status_never_uses_cache(jira, mcp_client):
@@ -221,6 +221,6 @@ async def test_status_never_uses_cache(jira, mcp_client):
     jira.add("/rest/api/2/myself", {})
     jira.sr("ping", {"ok": True})
     async with mcp_client() as c:
-        await c.call_tool("jira_analyst_status", {})
-        await c.call_tool("jira_analyst_status", {"clear_cache": True})
+        await c.call_tool("jira_admin_status", {})
+        await c.call_tool("jira_admin_status", {"clear_cache": True})
     assert len(jira.requests) == 6

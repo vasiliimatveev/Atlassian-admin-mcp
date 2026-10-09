@@ -3,8 +3,9 @@ import asyncio
 import httpx
 import pytest
 
-from jira_dc_analyst.client import AnalystError
-from jira_dc_analyst.config import DEFAULT_SR_PATH
+from atlassian_admin_mcp.client import JiraError
+from atlassian_admin_mcp.config import DEFAULT_SR_PATH
+from atlassian_admin_mcp.util import InvalidArgument
 
 from .conftest import BASE
 
@@ -37,7 +38,7 @@ async def test_context_path_in_base_url_is_kept(jira, client_factory):
 
 async def test_http_error_carries_status_body_and_url(jira, client_factory):
     jira.add("/rest/x", {"errorMessages": ["nope"]}, status=403)
-    with pytest.raises(AnalystError) as info:
+    with pytest.raises(JiraError) as info:
         await client_factory().rest_get("/rest/x")
     assert info.value.status == 403
     assert "nope" in info.value.body
@@ -46,7 +47,7 @@ async def test_http_error_carries_status_body_and_url(jira, client_factory):
 
 async def test_html_instead_of_json_is_reported(jira, client_factory):
     jira.add("/rest/x", content=b"<!DOCTYPE html><html>login</html>")
-    with pytest.raises(AnalystError, match="HTML"):
+    with pytest.raises(JiraError, match="HTML"):
         await client_factory().rest_get("/rest/x")
 
 
@@ -57,15 +58,29 @@ async def test_empty_body_is_empty_dict(jira, client_factory):
 
 async def test_redirects_are_not_followed(jira, client_factory):
     jira.add("/rest/x", content=b"", status=302, headers={"Location": "https://sso.example.com/"})
-    with pytest.raises(AnalystError) as info:
+    with pytest.raises(JiraError) as info:
         await client_factory().rest_get("/rest/x")
     assert info.value.status == 302
     assert len(jira.requests) == 1
 
 
-@pytest.mark.parametrize("path", ["/rest/../admin", "/rest/./x", "/rest/%2e%2e/x", "rest/x"])
-async def test_dot_segments_and_relative_paths_are_rejected(jira, client_factory, path):
-    with pytest.raises(AnalystError):
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/rest/../admin",
+        "/rest/./x",
+        "/rest/%2e%2e/x",
+        "rest/x",
+        "/rest/api/2/issue/HR-1;x/votes",
+        "/rest/api/2/issue/HR-1%3Bx/votes",
+        "/rest/agile/1.0/board/7%2F..%2F..%2Fapi%2F2%2Fsearch",
+        "/rest/api/2/issue/HR-1\\..\\x",
+        "/rest/api/2/issue/HR-1%5c..",
+        "/rest/api/2/issue/HR-1%00",
+    ],
+)
+async def test_unsafe_paths_are_rejected_before_sending(jira, client_factory, path):
+    with pytest.raises(InvalidArgument):
         await client_factory().rest_get(path)
     assert jira.requests == []
 
@@ -109,7 +124,7 @@ async def test_errors_are_not_cached(jira, client_factory):
     jira.add("/rest/x", {}, status=500)
     client = client_factory()
     for _ in range(2):
-        with pytest.raises(AnalystError):
+        with pytest.raises(JiraError):
             await client.rest_get("/rest/x")
     assert len(jira.requests) == 2
 
@@ -145,7 +160,7 @@ async def test_failed_shared_request_propagates_to_all_waiters(jira, client_fact
     await asyncio.sleep(0.05)
     gate.set()
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    assert all(isinstance(r, AnalystError) and r.status == 500 for r in results)
+    assert all(isinstance(r, JiraError) and r.status == 500 for r in results)
     assert len(jira.requests) == 1
 
 
@@ -186,7 +201,7 @@ async def test_retries_transient_statuses_then_succeeds(jira, client_factory, mo
 async def test_gives_up_after_retries(jira, client_factory, monkeypatch):
     monkeypatch.setattr("asyncio.sleep", _no_sleep)
     jira.add("/rest/x", {}, status=503)
-    with pytest.raises(AnalystError) as info:
+    with pytest.raises(JiraError) as info:
         await client_factory(retries=2).rest_get("/rest/x")
     assert info.value.status == 503
     assert len(jira.requests) == 3
@@ -194,7 +209,7 @@ async def test_gives_up_after_retries(jira, client_factory, monkeypatch):
 
 async def test_does_not_retry_client_errors(jira, client_factory):
     jira.add("/rest/x", {}, status=404)
-    with pytest.raises(AnalystError):
+    with pytest.raises(JiraError):
         await client_factory(retries=3).rest_get("/rest/x")
     assert len(jira.requests) == 1
 
@@ -208,19 +223,19 @@ async def test_transport_errors_are_retried_and_wrapped(jira, client_factory, mo
 
     client = client_factory(retries=1)
     client._http._transport = httpx.MockTransport(boom)
-    with pytest.raises(AnalystError, match="transport error") as info:
+    with pytest.raises(JiraError, match="transport error") as info:
         await client.rest_get("/rest/x")
     assert info.value.status is None
     assert len(jira.requests) == 2
 
 
 def test_backoff_honours_retry_after_with_cap():
-    from jira_dc_analyst.client import AnalystClient
+    from atlassian_admin_mcp.client import JiraClient
 
-    assert AnalystClient._backoff(0, "3") == 3.0
-    assert AnalystClient._backoff(0, "999") == 10.0
-    assert AnalystClient._backoff(2, None) == 2.0
-    assert AnalystClient._backoff(1, "Wed, 21 Oct 2026 07:28:00 GMT") == 1.0
+    assert JiraClient._backoff(0, "3") == 3.0
+    assert JiraClient._backoff(0, "999") == 10.0
+    assert JiraClient._backoff(2, None) == 2.0
+    assert JiraClient._backoff(1, "Wed, 21 Oct 2026 07:28:00 GMT") == 1.0
 
 
 async def _no_sleep(_seconds: float) -> None:
@@ -244,15 +259,15 @@ async def test_fetch_bytes_never_sends_credentials_to_foreign_host(jira, client_
 
 async def test_fetch_bytes_rejects_bad_urls(jira, client_factory):
     client = client_factory()
-    for url in ("", "file:///etc/passwd", "/secure/../../etc"):
-        with pytest.raises(AnalystError):
+    for url in ("", "file:///etc/passwd", "/secure/../../etc", "/secure/attachment/1;x/a"):
+        with pytest.raises(InvalidArgument):
             await client.fetch_bytes(url)
     assert jira.requests == []
 
 
 async def test_fetch_bytes_limit_by_content_length(jira, client_factory):
     jira.add("/f", content=b"x" * 100)
-    with pytest.raises(AnalystError) as info:
+    with pytest.raises(JiraError) as info:
         await client_factory().fetch_bytes("/f", max_bytes=10)
     assert info.value.status == 413
 
@@ -267,13 +282,13 @@ async def test_fetch_bytes_limit_while_streaming(jira, client_factory):
 
     client = client_factory()
     client._http._transport = httpx.MockTransport(handler)
-    with pytest.raises(AnalystError, match="exceeds limit"):
+    with pytest.raises(JiraError, match="exceeds limit"):
         await client.fetch_bytes("/f", max_bytes=25)
     assert await client.fetch_bytes("/f", max_bytes=1000) == b"x" * 100
 
 
 async def test_fetch_bytes_http_error(jira, client_factory):
-    with pytest.raises(AnalystError) as info:
+    with pytest.raises(JiraError) as info:
         await client_factory().fetch_bytes("/missing")
     assert info.value.status == 404
 

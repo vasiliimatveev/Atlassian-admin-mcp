@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
-from ..client import AnalystError
+from ..client import JiraError
 from ..util import error_json, get_client, to_json
 
 logger = logging.getLogger(__name__)
@@ -688,7 +688,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get("/rest/api/2/mypermissions", **params))
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"my_permissions failed: {exc}", status=exc.status)
 
     @tool(
@@ -716,7 +716,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get("/rest/api/2/reindex", cache=False))
-        except AnalystError as exc:
+        except JiraError as exc:
             if exc.status == 404:
                 return to_json(
                     {

@@ -26,8 +26,8 @@ import javax.ws.rs.core.Response
 @BaseScript CustomEndpointDelegate delegate
 
 // ============================================================================
-//  jira-dc-analyst-mcp — read-only admin analyst endpoint (Jira DC 9.x / 10.x)
-//  URL:    GET /rest/scriptrunner/latest/custom/adminAnalyst?action=...
+//  atlassian-admin-mcp — read-only admin endpoint (Jira DC 9.x / 10.x)
+//  URL:    GET /rest/scriptrunner/latest/custom/atlassianAdmin?action=...
 //  Access: members of ALLOWED_GROUPS only
 // ============================================================================
 
@@ -37,7 +37,7 @@ final String ENDPOINT_VERSION = "2.0.0"
 // Groups allowed to call this endpoint. Adjust if your admin group differs.
 final List<String> ALLOWED_GROUPS = ["jira-administrators"]
 
-adminAnalyst(httpMethod: "GET", groups: ALLOWED_GROUPS) { MultivaluedMap queryParams ->
+atlassianAdmin(httpMethod: "GET", groups: ALLOWED_GROUPS) { MultivaluedMap queryParams ->
     def action = queryParams.getFirst("action") ?: ""
     def p = { String name -> queryParams.getFirst(name) ?: "" }
 

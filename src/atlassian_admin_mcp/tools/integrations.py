@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
-from ..client import AnalystError
+from ..client import JiraError
 from ..util import error_json, get_client, seg, to_json
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get("/rest/plugins/1.0/", accept=_UPM_ACCEPT_LIST))
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"list_plugins failed: {exc}", status=exc.status)
 
     @tool(
@@ -65,7 +65,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                     accept=_UPM_ACCEPT_PLUGIN,
                 )
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_plugin failed: {exc}", status=exc.status)
 
     @tool(
@@ -85,7 +85,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                     accept=_UPM_ACCEPT_PLUGIN,
                 )
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"get_plugin_modules failed: {exc}", status=exc.status)
 
     @tool(
@@ -110,11 +110,11 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         """
         client = get_client(ctx)
         paths = ("/rest/jira-webhook/1.0/webhooks", "/rest/webhooks/1.0/webhook")
-        last_err: AnalystError | None = None
+        last_err: JiraError | None = None
         for path in paths:
             try:
                 return to_json(await client.rest_get(path))
-            except AnalystError as exc:
+            except JiraError as exc:
                 last_err = exc
                 if exc.status in (404, 405):
                     continue
@@ -152,7 +152,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                     accept="application/json",
                 )
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(f"list_application_links failed: {exc}", status=exc.status)
 
     @tool(
@@ -177,7 +177,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get("/rest/internal/1.0/darkFeatures"))
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(
                 "list_dark_features failed — /rest/internal/1.0/darkFeatures "
                 "is a private API and may be unavailable on this instance",

@@ -9,7 +9,7 @@ from urllib.parse import quote
 if TYPE_CHECKING:
     from fastmcp import Context
 
-    from .client import AnalystClient
+    from .client import JiraClient
 
 _json_indent: int | None = None
 
@@ -49,5 +49,5 @@ def seg(value: Any) -> str:
     return quote(text, safe="")
 
 
-def get_client(ctx: Context) -> AnalystClient:
+def get_client(ctx: Context) -> JiraClient:
     return ctx.lifespan_context["client"]

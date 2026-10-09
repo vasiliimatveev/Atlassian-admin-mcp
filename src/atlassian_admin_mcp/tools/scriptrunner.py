@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
-from ..client import AnalystError
+from ..client import JiraError
 from ..util import error_json, get_client, to_json
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                         or not listener.get("projects")
                     ]
                 return to_json(data)
-        except AnalystError as exc:
+        except JiraError as exc:
             logger.info("SR REST listeners unavailable (%s); falling back to Groovy", exc)
         return to_json(await client.sr_action("list_sr_listeners", project=project))
 
@@ -67,7 +67,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                     if str(lid) == listener_id:
                         return to_json(listener)
                 return error_json(f"Listener {listener_id} not found", status=404)
-        except AnalystError as exc:
+        except JiraError as exc:
             logger.info(
                 "SR REST listener fetch failed for id=%s (%s); falling back",
                 listener_id,
@@ -143,7 +143,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                                 item["scriptFile"] = sfos["scriptFile"]
                         item["template"] = sr_config.get("template", "")
                         item["cacheable"] = sr_config.get("cacheable", "")
-        except AnalystError as exc:
+        except JiraError as exc:
             logger.info("SR scriptfields enrichment failed (%s); returning base", exc)
         return to_json(data)
 
@@ -171,7 +171,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
                     if cf_id in (cf_num, field_id) or field.get("name") == field_id:
                         return to_json(field)
                 return error_json(f"Scripted field {field_id} not found in SR config", status=404)
-        except AnalystError as exc:
+        except JiraError as exc:
             logger.info(
                 "SR REST scriptfield fetch failed for id=%s (%s); falling back",
                 field_id,

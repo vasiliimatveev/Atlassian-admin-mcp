@@ -7,7 +7,7 @@ import sys
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
 
-from jira_dc_analyst.__main__ import main
+from atlassian_admin_mcp.__main__ import main
 
 
 def test_list_toolsets(capsys):
@@ -20,7 +20,7 @@ def test_list_toolsets(capsys):
 def test_missing_config_exits_with_message():
     env = {k: v for k, v in os.environ.items() if not k.startswith("JIRA_")}
     proc = subprocess.run(
-        [sys.executable, "-m", "jira_dc_analyst"],
+        [sys.executable, "-m", "atlassian_admin_mcp"],
         env=env,
         capture_output=True,
         text=True,
@@ -38,7 +38,7 @@ async def test_stdio_server_lists_tools():
         "JIRA_PERSONAL_TOKEN": "x",
         "TOOLSETS": "logs",
     }
-    transport = StdioTransport(command=sys.executable, args=["-m", "jira_dc_analyst"], env=env)
+    transport = StdioTransport(command=sys.executable, args=["-m", "atlassian_admin_mcp"], env=env)
     async with Client(transport) as c:
         names = sorted(t.name for t in await c.list_tools())
-    assert names == ["jira_analyst_status", "jira_get_audit_log", "jira_get_system_log"]
+    assert names == ["jira_admin_status", "jira_get_audit_log", "jira_get_system_log"]

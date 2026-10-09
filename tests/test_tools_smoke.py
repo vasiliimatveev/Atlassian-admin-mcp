@@ -10,8 +10,8 @@ import base64
 import httpx
 import pytest
 
-from jira_dc_analyst.config import DEFAULT_SR_PATH
-from jira_dc_analyst.server import create_server
+from atlassian_admin_mcp.config import DEFAULT_SR_PATH
+from atlassian_admin_mcp.server import create_server
 
 from .conftest import BASE, FakeJira, make_settings
 

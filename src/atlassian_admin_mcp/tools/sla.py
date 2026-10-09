@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
-from ..client import AnalystError
+from ..client import JiraError
 from ..util import error_json, get_client, to_json
 
 logger = logging.getLogger(__name__)
@@ -48,11 +48,11 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get("/rest/sla/1.0/slas"))
-        except AnalystError as exc:
+        except JiraError as exc:
             if exc.status == 404:
                 try:
                     return to_json(await client.rest_get("/rest/sla/1.0/definitions"))
-                except AnalystError as exc2:
+                except JiraError as exc2:
                     return error_json(
                         "list_sla_definitions failed on both known leaf "
                         "paths (/slas and /definitions)",
@@ -82,11 +82,11 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get("/rest/sla/1.0/calendars"))
-        except AnalystError as exc:
+        except JiraError as exc:
             if exc.status == 404:
                 try:
                     return to_json(await client.rest_get("/rest/sla/1.0/slas/calendars"))
-                except AnalystError as exc2:
+                except JiraError as exc2:
                     return error_json(
                         "list_sla_calendars failed on both known leaf paths",
                         status=exc2.status,
@@ -111,7 +111,7 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
 
         Returns each issue with its SLAs (elapsed / remaining / paused /
         breached / startDate / targetDate / stopDate / calendarId). The
-        most valuable analyst endpoint of this plugin — answers "which
+        most valuable endpoint of this plugin — answers "which
         tickets are breached" and "which SLAs are close to breach" in a
         single call.
 
@@ -128,11 +128,11 @@ def register(tool: Callable[..., Any]) -> None:  # noqa: C901 — flat list of t
         client = get_client(ctx)
         try:
             return to_json(await client.rest_get("/rest/sla/1.0/search", **params))
-        except AnalystError as exc:
+        except JiraError as exc:
             if exc.status == 404:
                 try:
                     return to_json(await client.rest_get("/rest/sla/1.0/slaSearch", **params))
-                except AnalystError as exc2:
+                except JiraError as exc2:
                     return error_json(
                         "search_sla_status failed on both known leaf paths",
                         status=exc2.status,

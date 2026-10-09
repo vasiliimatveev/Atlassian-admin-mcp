@@ -22,6 +22,8 @@ from urllib.parse import urlsplit, urlunsplit
 import httpx
 
 from .config import Settings
+from .guard import SEARCH_PATH, GuardPolicy
+from .util import InvalidArgument
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +32,8 @@ _MAX_BACKOFF = 10.0
 _BODY_PREVIEW = 500
 
 
-class AnalystError(Exception):
-    """A failed call to Jira or the analyst Groovy endpoint."""
+class JiraError(Exception):
+    """A failed call to Jira or the Groovy admin endpoint."""
 
     def __init__(
         self,
@@ -84,17 +86,29 @@ class _TTLCache:
 
 
 _DOT_SEGMENTS = frozenset({".", "..", "%2e", "%2e%2e", ".%2e", "%2e."})
+# Characters servlet containers treat specially inside a path: ';' starts path
+# parameters (Tomcat strips them when routing), '\\' and encoded '/' or '\\' are
+# normalised differently by proxies and Tomcat. None occur in real Jira ids.
+_UNSAFE_IN_PATH = (";", "\\", "%2f", "%5c", "%3b", "%00")
 
 
 def _check_segments(path: str) -> None:
-    if any(part.lower() in _DOT_SEGMENTS for part in path.split("/")):
-        raise AnalystError(f"dot segments are not allowed in paths: {path!r}")
+    lowered = path.lower()
+    if any(part in _DOT_SEGMENTS for part in lowered.split("/")):
+        raise InvalidArgument(f"dot segments are not allowed in paths: {path!r}")
+    bad = [c for c in _UNSAFE_IN_PATH if c in lowered]
+    if bad:
+        raise InvalidArgument(f"path contains {bad} — not a valid Jira id or key: {path!r}")
 
 
 def _check_path(path: str) -> None:
     if not path.startswith("/"):
-        raise AnalystError(f"REST path must start with '/': {path!r}")
+        raise InvalidArgument(f"REST path must start with '/': {path!r}")
     _check_segments(urlsplit(path).path)
+
+
+def _clean(params: dict[str, Any]) -> dict[str, str]:
+    return {k: str(v) for k, v in params.items() if v is not None and v != ""}
 
 
 def _parse_json(body: bytes, where: str, status: int, url: str) -> Any:
@@ -107,12 +121,12 @@ def _parse_json(body: bytes, where: str, status: int, url: str) -> Any:
         hint = ""
         if preview.lstrip().lower().startswith(("<!doctype", "<html")):
             hint = " (got HTML — usually a login/SSO page or a wrong path)"
-        raise AnalystError(
+        raise JiraError(
             f"{where} returned non-JSON{hint}", status=status, body=preview, url=url
         ) from exc
 
 
-class AnalystClient:
+class JiraClient:
     def __init__(
         self,
         settings: Settings,
@@ -125,7 +139,7 @@ class AnalystClient:
         self._scheme, self._netloc = base.scheme, base.netloc
         self._base_path = base.path.rstrip("/")
 
-        headers = {"User-Agent": "jira-dc-analyst-mcp"}
+        headers = {"User-Agent": "atlassian-admin-mcp"}
         auth: httpx.Auth | None = None
         if settings.personal_token:
             headers["Authorization"] = f"Bearer {settings.personal_token}"
@@ -147,6 +161,7 @@ class AnalystClient:
         self._sem = asyncio.Semaphore(settings.max_concurrency)
         self._cache = _TTLCache(settings.cache_ttl) if settings.cache_ttl > 0 else None
         self._inflight: dict[Any, asyncio.Future[bytes]] = {}
+        self.guard = GuardPolicy(self._search_unguarded) if settings.guard_active else None
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -174,6 +189,8 @@ class AnalystClient:
 
     async def sr_action(self, action: str, *, cache: bool = True, **params: Any) -> Any:
         """Call the Groovy endpoint: ``GET <sr_path>?action=<action>&...``."""
+        if self.guard is not None:
+            self.guard.authorize_sr()
         query = {"action": action, **params}
         return await self._get_json(
             self.sr_url, query, "application/json", cache, f"SR action={action}"
@@ -193,12 +210,25 @@ class AnalystClient:
         applinks (XML unless JSON is requested).
         """
         _check_path(path)
-        return await self._get_json(f"{self._base_url}{path}", params, accept, cache, f"GET {path}")
+        query = _clean(params)
+        url = f"{self._base_url}{path}"
+        if self.guard is None:
+            return await self._get_json(url, query, accept, cache, f"GET {path}")
+        query = await self.guard.authorize(path, query)
+        data = await self._get_json(url, query, accept, cache, f"GET {path}")
+        self.guard.after_response(path, data)
+        return data
+
+    async def _search_unguarded(self, params: dict[str, str]) -> Any:
+        """Issue search used by the guard itself — never cached, never guarded."""
+        return await self._get_json(
+            f"{self._base_url}{SEARCH_PATH}", params, "application/json", False, "guard check"
+        )
 
     async def _get_json(
         self, url: str, params: dict[str, Any], accept: str, cache: bool, where: str
     ) -> Any:
-        query = {k: str(v) for k, v in params.items() if v is not None and v != ""}
+        query = _clean(params)
         if not cache or self._cache is None:
             return _parse_json(await self._fetch(url, query, accept, where), where, 200, url)
 
@@ -253,7 +283,7 @@ class AnalystClient:
                     resp = await self._http.get(url, params=query, headers={"Accept": accept})
             except httpx.TransportError as exc:
                 if last:
-                    raise AnalystError(f"{where}: transport error: {exc!r}", url=url) from exc
+                    raise JiraError(f"{where}: transport error: {exc!r}", url=url) from exc
                 await asyncio.sleep(self._backoff(attempt, None))
                 continue
 
@@ -263,7 +293,7 @@ class AnalystClient:
             if not resp.is_success:
                 preview = resp.text[:_BODY_PREVIEW] if resp.content else ""
                 logger.warning("HTTP %s from %s: %s", resp.status_code, where, preview)
-                raise AnalystError(
+                raise JiraError(
                     f"{where} returned HTTP {resp.status_code}",
                     status=resp.status_code,
                     body=preview,
@@ -292,10 +322,10 @@ class AnalystClient:
         session credentials are never sent anywhere else.
         """
         if not url:
-            raise AnalystError("empty download URL")
+            raise InvalidArgument("empty download URL")
         parts = urlsplit(url)
         if parts.scheme and parts.scheme not in ("http", "https"):
-            raise AnalystError(f"unsupported URL scheme in {url!r}")
+            raise InvalidArgument(f"unsupported URL scheme in {url!r}")
         # Check before any joining: urljoin would silently collapse "..".
         _check_segments(parts.path)
         if parts.scheme or parts.netloc:
@@ -310,12 +340,15 @@ class AnalystClient:
     async def fetch_bytes(self, url: str, *, max_bytes: int | None = None) -> bytes:
         """Download raw bytes (attachments, thumbnails) with a hard size cap."""
         target = self._same_origin(url)
+        if self.guard is not None:
+            path = urlsplit(target).path
+            self.guard.authorize_download(path.removeprefix(self._base_path) or "/")
         where = f"GET {urlsplit(target).path}"
         try:
             async with self._sem, self._http.stream("GET", target) as resp:
                 if not resp.is_success:
                     await resp.aread()
-                    raise AnalystError(
+                    raise JiraError(
                         f"{where} returned HTTP {resp.status_code}",
                         status=resp.status_code,
                         body=resp.text[:_BODY_PREVIEW],
@@ -328,7 +361,7 @@ class AnalystClient:
                     and declared.isdigit()
                     and int(declared) > max_bytes
                 ):
-                    raise AnalystError(
+                    raise JiraError(
                         f"content-length {declared} exceeds limit {max_bytes}", status=413
                     )
                 chunks: list[bytes] = []
@@ -336,8 +369,8 @@ class AnalystClient:
                 async for chunk in resp.aiter_bytes():
                     total += len(chunk)
                     if max_bytes is not None and total > max_bytes:
-                        raise AnalystError(f"download exceeds limit {max_bytes} bytes", status=413)
+                        raise JiraError(f"download exceeds limit {max_bytes} bytes", status=413)
                     chunks.append(chunk)
                 return b"".join(chunks)
         except httpx.TransportError as exc:
-            raise AnalystError(f"{where}: transport error: {exc!r}", url=target) from exc
+            raise JiraError(f"{where}: transport error: {exc!r}", url=target) from exc

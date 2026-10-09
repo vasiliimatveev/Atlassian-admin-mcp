@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastmcp import Context
 from pydantic import Field
 
-from ..client import AnalystError
+from ..client import JiraError
 from ..util import error_json, get_client, seg, to_json
 
 logger = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ def register(tool: Callable[..., Any]) -> None:
                     f"/rest/structure-gantt/1.0/configuration/{seg(structure_id)}"
                 )
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(
                 f"Cannot read Gantt config for structure {structure_id}",
                 detail=str(exc),
@@ -102,7 +102,7 @@ def register(tool: Callable[..., Any]) -> None:
             return to_json(
                 await client.rest_get(f"/rest/structure-gantt/1.0/schedule/{seg(structure_id)}")
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(
                 f"Cannot read Gantt schedule for structure {structure_id}",
                 detail=str(exc),
@@ -122,7 +122,7 @@ def register(tool: Callable[..., Any]) -> None:
             return to_json(
                 await client.rest_get(f"/rest/structure-gantt/1.0/calendar/{seg(structure_id)}")
             )
-        except AnalystError as exc:
+        except JiraError as exc:
             return error_json(
                 f"Cannot read Gantt calendar for structure {structure_id}",
                 detail=str(exc),

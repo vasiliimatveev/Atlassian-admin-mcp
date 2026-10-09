@@ -8,9 +8,9 @@ import httpx
 import pytest
 from fastmcp import Client
 
-from jira_dc_analyst.client import AnalystClient
-from jira_dc_analyst.config import DEFAULT_SR_PATH, Settings
-from jira_dc_analyst.server import create_server
+from atlassian_admin_mcp.client import JiraClient
+from atlassian_admin_mcp.config import DEFAULT_SR_PATH, Settings
+from atlassian_admin_mcp.server import create_server
 
 BASE = "https://jira.example.com"
 
@@ -87,10 +87,10 @@ def jira() -> FakeJira:
 
 @pytest.fixture
 def client_factory(jira: FakeJira):
-    clients: list[AnalystClient] = []
+    clients: list[JiraClient] = []
 
-    def make(**overrides: Any) -> AnalystClient:
-        c = AnalystClient(make_settings(**overrides), transport=httpx.MockTransport(jira))
+    def make(**overrides: Any) -> JiraClient:
+        c = JiraClient(make_settings(**overrides), transport=httpx.MockTransport(jira))
         clients.append(c)
         return c
 
