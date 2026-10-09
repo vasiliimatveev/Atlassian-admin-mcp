@@ -1,0 +1,58 @@
+[project]
+name = "jira-dc-analyst-mcp"
+version = "0.1.0"
+description = "Read-only MCP server that lets AI agents audit a Jira Data Center instance: workflows, schemes, ScriptRunner, JMWE, Structure, Assets, Automation, logs."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "vasiliimatveev" }]
+requires-python = ">=3.10"
+keywords = ["mcp", "jira", "jira-data-center", "scriptrunner", "atlassian", "admin", "audit"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Bug Tracking",
+]
+dependencies = [
+    "fastmcp>=4.1,<5",
+    "httpx>=0.28,<1",
+    "pydantic>=2.10,<3",
+]
+
+[project.urls]
+Homepage = "https://github.com/vasiliimatveev/Atlassian-admin-mcp"
+Issues = "https://github.com/vasiliimatveev/Atlassian-admin-mcp/issues"
+
+[project.scripts]
+jira-dc-analyst-mcp = "jira_dc_analyst.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=1.0",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jira_dc_analyst"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "C90", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003", "E501"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
